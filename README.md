@@ -8,8 +8,9 @@ A FastMCP server implementation for the Semantic Scholar API, providing comprehe
 
   - Full-text search with advanced filtering
   - Title-based paper matching
-  - Paper recommendations with positive/negative examples
+  - Paper recommendations (single and multi-paper)
   - Batch paper details retrieval
+  - Advanced search with ranking strategies
 
 - **Citation Analysis**
 
@@ -29,6 +30,8 @@ A FastMCP server implementation for the Semantic Scholar API, providing comprehe
   - Efficient batch operations
   - Rate limiting compliance
   - Support for both authenticated and unauthenticated access
+  - Graceful shutdown and error handling
+  - Connection pooling and resource management
 
 ## System Requirements
 
@@ -89,15 +92,16 @@ The server automatically adjusts to the appropriate rate limits:
 
 ### Paper Search Tools
 
-- `paper_search`: General paper search with filters
+- `paper_search`: General paper search with comprehensive filters
 - `paper_search_match`: Exact title matching
 - `paper_details`: Single paper details
 - `paper_batch_details`: Multiple paper details
+- `advanced_search_papers_semantic_scholar`: Complex search with ranking strategies
 
 ### Citation Tools
 
-- `paper_citations`: Get citing papers
-- `paper_references`: Get referenced papers
+- `paper_citations`: Get citing papers with context
+- `paper_references`: Get referenced papers with context
 
 ### Author Tools
 
@@ -106,10 +110,11 @@ The server automatically adjusts to the appropriate rate limits:
 - `author_papers`: Get author's publications
 - `author_batch_details`: Multiple author details
 
-### Advanced Tools
+### Recommendation Tools
 
-- `advanced_search_papers_semantic_scholar`: Complex search with ranking
-- `get_paper_recommendations`: Paper recommendations
+- `get_paper_recommendations`: Paper recommendations with two modes:
+  - Single-paper recommendations with pool selection
+  - Multi-paper recommendations with positive/negative examples
 
 ## Usage Examples
 
@@ -125,30 +130,59 @@ results = await paper_search(
 )
 ```
 
-### Get Paper Recommendations
+### Advanced Search with Ranking
 
 ```python
+results = await advanced_search_papers_semantic_scholar(
+    context,
+    query="transformer architecture",
+    search_type="influential",
+    filters={
+        "year_range": (2020, 2024),
+        "require_abstract": True,
+        "citation_range": (100, None)
+    }
+)
+```
+
+### Paper Recommendations
+
+```python
+# Single paper recommendation
 recommendations = await get_paper_recommendations(
     context,
     positive_paper_ids=["649def34f8be52c8b66281af98ae884c09aef38b"],
     fields="title,authors,year",
-    limit=10
+    limit=10,
+    from_pool="recent"
+)
+
+# Multi-paper recommendation
+recommendations = await get_paper_recommendations(
+    context,
+    positive_paper_ids=["649def34f8be52c8b66281af98ae884c09aef38b", "ARXIV:2106.15928"],
+    negative_paper_ids=["ArXiv:1805.02262"],
+    fields="title,abstract,authors"
 )
 ```
 
-### Batch Author Details
+### Batch Operations
 
 ```python
-author_info = await author_batch_details(
+# Get details for multiple papers
+papers = await paper_batch_details(
+    context,
+    paper_ids=["649def34f8be52c8b66281af98ae884c09aef38b", "ARXIV:2106.15928"],
+    fields="title,authors,year,citations"
+)
+
+# Get details for multiple authors
+authors = await author_batch_details(
     context,
     author_ids=["1741101", "1780531"],
     fields="name,hIndex,citationCount,paperCount"
 )
 ```
-
-## Documentation
-
-For detailed documentation of all tools and features, see [DOCUMENTATION.md](DOCUMENTATION.md).
 
 ## Error Handling
 
@@ -176,13 +210,9 @@ The server provides standardized error responses:
 5. Validate inputs before making requests
 6. Handle errors appropriately in your application
 
-## Contributing
+## Documentation
 
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+For detailed documentation of all tools and features, see [DOCUMENTATION.md](DOCUMENTATION.md).
 
 ## License
 

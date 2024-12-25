@@ -1522,7 +1522,7 @@ async def get_paper_recommendations(
                 if fields:
                     params["fields"] = fields
                     
-                url = f"https://api.semanticscholar.org/recommendations/v1/papers/{paper_id}/recommendations"
+                url = f"https://api.semanticscholar.org/recommendations/v1/papers/{paper_id}"
                 response = await client.get(url, params=params, headers=headers)
             else:
                 # Multi-paper recommendation

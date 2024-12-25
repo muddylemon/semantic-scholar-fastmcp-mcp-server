@@ -8,6 +8,7 @@ from datetime import datetime
 from enum import Enum
 import asyncio
 import time
+import signal
 from dataclasses import dataclass
 
 logging.basicConfig(level=logging.INFO)
@@ -269,6 +270,7 @@ async def make_request(endpoint: str, params: Dict = None) -> Dict:
             response.raise_for_status()
             return response.json()
     except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error {e.response.status_code} for {endpoint}: {e.response.text}")
         if e.response.status_code == 429:
             return create_error_response(
                 ErrorType.RATE_LIMIT,
@@ -283,16 +285,21 @@ async def make_request(endpoint: str, params: Dict = None) -> Dict:
             f"HTTP error: {e.response.status_code}",
             {"response": e.response.text}
         )
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as e:
+        logger.error(f"Request timeout for {endpoint}: {str(e)}")
         return create_error_response(
             ErrorType.TIMEOUT,
             f"Request timed out after {Config.TIMEOUT} seconds"
         )
     except Exception as e:
+        logger.error(f"Unexpected error for {endpoint}: {str(e)}")
         return create_error_response(
             ErrorType.API_ERROR,
             str(e)
         )
+    finally:
+        # Clean up any resources if needed
+        pass
 
 @mcp.tool()
 async def paper_search(
@@ -1679,7 +1686,45 @@ async def advanced_search_papers_semantic_scholar(
             str(e)
         )
 
+async def shutdown():
+    """Gracefully shut down the server."""
+    logger.info("Initiating graceful shutdown...")
+    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    
+    # Give tasks a chance to complete
+    for task in tasks:
+        task.cancel()
+    
+    logger.info(f"Cancelling {len(tasks)} outstanding tasks")
+    await asyncio.gather(*tasks, return_exceptions=True)
+    logger.info("Shutdown complete")
+
+def init_signal_handlers(loop):
+    """Initialize signal handlers for graceful shutdown."""
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
+    logger.info("Signal handlers initialized")
 
 if __name__ == "__main__":
-    logger.info("Starting Semantic Scholar Server")
-    mcp.run()
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Initialize signal handlers
+        init_signal_handlers(loop)
+        
+        # Start the server
+        logger.info("Starting Semantic Scholar Server")
+        loop.run_until_complete(mcp.run_async())
+    except KeyboardInterrupt:
+        logger.info("Received keyboard interrupt, shutting down...")
+    except Exception as e:
+        logger.error(f"Fatal error: {str(e)}")
+    finally:
+        try:
+            loop.run_until_complete(shutdown())
+        except Exception as e:
+            logger.error(f"Error during shutdown: {str(e)}")
+        finally:
+            loop.close()
+            logger.info("Server stopped")

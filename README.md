@@ -39,20 +39,13 @@ A FastMCP server implementation for the Semantic Scholar API, providing comprehe
 
 ## Installation
 
-### Option 1: Claude Desktop
+Install using FastMCP:
 
-1. Clone this repository to your Claude Desktop workspace
-2. Optionally set up the API key environment variable:
-   ```bash
-   export SEMANTIC_SCHOLAR_API_KEY="your-api-key"
-   ```
-3. The server will be automatically available to Claude
+```bash
+fastmcp install semantic-scholar-server.py --name "Semantic Scholar" -e SEMANTIC_SCHOLAR_API_KEY=your-api-key
+```
 
-### Option 2: Cline VSCode Plugin
-
-1. Copy the server implementation to your workspace
-2. Optionally configure the API key in your environment
-3. The server will be accessible through the Cline plugin
+The `-e SEMANTIC_SCHOLAR_API_KEY` parameter is optional. If not provided, the server will use unauthenticated access with lower rate limits.
 
 ## Configuration
 

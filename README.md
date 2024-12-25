@@ -37,7 +37,6 @@ A FastMCP server implementation for the Semantic Scholar API, providing comprehe
 
 - Python 3.8+
 - FastMCP framework
-- `httpx` for async HTTP requests
 - Environment variable for API key (optional)
 
 ## Installation
@@ -58,29 +57,13 @@ The `-e SEMANTIC_SCHOLAR_API_KEY` parameter is optional. If not provided, the se
   - Get your key from [Semantic Scholar API](https://www.semanticscholar.org/product/api)
   - If not provided, the server will use unauthenticated access
 
-### API Access Modes
-
-#### Authenticated Access (With API Key)
-
-- Higher rate limits
-- Faster response times
-- Access to all API features
-- Recommended for production use
-
-#### Unauthenticated Access (No API Key)
-
-- Lower rate limits
-- Longer timeouts
-- Basic API functionality
-- Suitable for testing and development
-
 ### Rate Limits
 
 The server automatically adjusts to the appropriate rate limits:
 
 **With API Key**:
 
-- Search and batch endpoints: 1 request per second
+- Search, batch and recommendation endpoints: 1 request per second
 - Other endpoints: 10 requests per second
 
 **Without API Key**:
@@ -200,15 +183,6 @@ The server provides standardized error responses:
     }
 }
 ```
-
-## Best Practices
-
-1. Use batch endpoints when requesting multiple items
-2. Leverage predefined field combinations for common use cases
-3. Use an API key for production environments
-4. Implement appropriate rate limit handling
-5. Validate inputs before making requests
-6. Handle errors appropriately in your application
 
 ## Documentation
 

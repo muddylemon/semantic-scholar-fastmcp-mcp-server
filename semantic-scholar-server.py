@@ -537,147 +537,6 @@ async def get_ranking_factors(strategy: str) -> Dict:
     return {}
 
 @mcp.tool()
-async def advanced_search_papers_semantic_scholar(
-    context: Context,
-    query: str,
-    search_type: str = "comprehensive",  # "comprehensive", "influential", "latest"
-    filters: Optional[Dict] = None,
-    search_config: Optional[Dict] = None
-) -> Dict:
-    """
-    Advanced paper search with complex filtering and ranking strategies.
-    This tool builds on top of the basic paper_search to provide additional 
-    functionality like multi-criteria search and specialized result ranking.
-
-    Args:
-        query (str): Search query string
-        search_type (str): Type of search to perform:
-            - "comprehensive": Balanced search considering relevance and impact
-            - "influential": Focus on highly-cited and influential papers
-            - "latest": Focus on recent papers with impact
-        filters (Optional[Dict]): Advanced filtering options:
-            {
-                "year_range": Optional[Tuple[int, int]],  # (start_year, end_year)
-                "min_citations": Optional[int],
-                "max_papers_per_author": Optional[int],
-                "require_abstract": bool = False,
-                "require_references": bool = False,
-                "citation_range": Optional[Tuple[int, int]],  # (min, max)
-                "author_citation_count": Optional[int],  # min author citations
-                "venue_impact_factor": Optional[float],  # min venue impact
-                "exclude_venues": Optional[List[str]],
-                "include_venues": Optional[List[str]]
-            }
-        search_config (Optional[Dict]): Search behavior configuration:
-            {
-                "batch_size": int = 100,  # papers per batch
-                "max_batches": int = 5,   # max number of batches to process
-                "diversify_results": bool = True,  # avoid similar papers
-                "prioritize_open_access": bool = False,
-                "min_abstract_length": Optional[int],
-                "ranking_strategy": str = "balanced"  # "citations", "recency", "relevance"
-            }
-
-    Returns:
-        Dict: {
-            "papers": List[Dict],  # Processed and ranked papers
-            "stats": {
-                "total_found": int,
-                "total_processed": int,
-                "avg_citations": float,
-                "year_distribution": Dict[int, int],
-                "top_venues": List[str],
-                "top_authors": List[str]
-            },
-            "meta": {
-                "search_coverage": float,  # % of total results processed
-                "filters_applied": List[str],
-                "ranking_factors": Dict[str, float]
-            }
-        }
-    """
-    if not query.strip():
-        return create_error_response(
-            ErrorType.VALIDATION,
-            "Query string cannot be empty"
-        )
-
-    # Validate search type
-    if search_type not in Config.SEARCH_TYPES:
-        return create_error_response(
-            ErrorType.VALIDATION,
-            f"Invalid search type. Must be one of: {list(Config.SEARCH_TYPES.keys())}"
-        )
-
-    # Set default configurations
-    default_filters = {
-        "year_range": None,
-        "min_citations": None,
-        "max_papers_per_author": None,
-        "require_abstract": False,
-        "require_references": False,
-        "citation_range": None,
-        "author_citation_count": None,
-        "venue_impact_factor": None,
-        "exclude_venues": [],
-        "include_venues": []
-    }
-    
-    default_config = {
-        "batch_size": Config.MAX_BATCH_SIZE,
-        "max_batches": Config.MAX_BATCHES,
-        "diversify_results": True,
-        "prioritize_open_access": False,
-        "min_abstract_length": None,
-        "ranking_strategy": Config.SEARCH_TYPES[search_type]["ranking_strategy"]
-    }
-
-    # Merge provided filters/config with defaults
-    filters = {**default_filters, **(filters or {})}
-    search_config = {**default_config, **(search_config or {})}
-
-    # Apply search type configurations
-    search_type_config = Config.SEARCH_TYPES[search_type]
-    if search_type_config["min_citations"]:
-        filters["min_citations"] = max(
-            filters.get("min_citations", 0),
-            search_type_config["min_citations"]
-        )
-    
-    if search_type == "latest":
-        current_year = datetime.now().year
-        if not filters.get("year_range"):
-            filters["year_range"] = (current_year - 2, current_year)
-
-    try:
-        # Perform initial search using paper_search
-        initial_results = await paper_search(
-            context,
-            query=query,
-            fields=PaperFields.DETAILED,
-            min_citation_count=filters.get("min_citations"),
-            year=f"{filters['year_range'][0]}-{filters['year_range'][1]}" if filters["year_range"] else None,
-            limit=search_config["batch_size"]
-        )
-
-        if "error" in initial_results:
-            return initial_results
-
-        # Process and enhance results
-        processed_results = await process_search_results(
-            context, initial_results, filters, search_config
-        )
-
-        return processed_results
-
-    except Exception as e:
-        logger.error(f"Error in advanced search: {str(e)}")
-        return create_error_response(
-            ErrorType.API_ERROR,
-            str(e)
-        )
-
-@mcp.tool()
 async def paper_search_match(
     context: Context,
     query: str,
@@ -1678,6 +1537,148 @@ async def get_paper_recommendations(
             ErrorType.API_ERROR,
             str(e)
         )
+
+@mcp.tool()
+async def advanced_search_papers_semantic_scholar(
+    context: Context,
+    query: str,
+    search_type: str = "comprehensive",  # "comprehensive", "influential", "latest"
+    filters: Optional[Dict] = None,
+    search_config: Optional[Dict] = None
+) -> Dict:
+    """
+    Advanced paper search with complex filtering and ranking strategies.
+    This tool builds on top of the basic paper_search to provide additional 
+    functionality like multi-criteria search and specialized result ranking.
+
+    Args:
+        query (str): Search query string
+        search_type (str): Type of search to perform:
+            - "comprehensive": Balanced search considering relevance and impact
+            - "influential": Focus on highly-cited and influential papers
+            - "latest": Focus on recent papers with impact
+        filters (Optional[Dict]): Advanced filtering options:
+            {
+                "year_range": Optional[Tuple[int, int]],  # (start_year, end_year)
+                "min_citations": Optional[int],
+                "max_papers_per_author": Optional[int],
+                "require_abstract": bool = False,
+                "require_references": bool = False,
+                "citation_range": Optional[Tuple[int, int]],  # (min, max)
+                "author_citation_count": Optional[int],  # min author citations
+                "venue_impact_factor": Optional[float],  # min venue impact
+                "exclude_venues": Optional[List[str]],
+                "include_venues": Optional[List[str]]
+            }
+        search_config (Optional[Dict]): Search behavior configuration:
+            {
+                "batch_size": int = 100,  # papers per batch
+                "max_batches": int = 5,   # max number of batches to process
+                "diversify_results": bool = True,  # avoid similar papers
+                "prioritize_open_access": bool = False,
+                "min_abstract_length": Optional[int],
+                "ranking_strategy": str = "balanced"  # "citations", "recency", "relevance"
+            }
+
+    Returns:
+        Dict: {
+            "papers": List[Dict],  # Processed and ranked papers
+            "stats": {
+                "total_found": int,
+                "total_processed": int,
+                "avg_citations": float,
+                "year_distribution": Dict[int, int],
+                "top_venues": List[str],
+                "top_authors": List[str]
+            },
+            "meta": {
+                "search_coverage": float,  # % of total results processed
+                "filters_applied": List[str],
+                "ranking_factors": Dict[str, float]
+            }
+        }
+    """
+    if not query.strip():
+        return create_error_response(
+            ErrorType.VALIDATION,
+            "Query string cannot be empty"
+        )
+
+    # Validate search type
+    if search_type not in Config.SEARCH_TYPES:
+        return create_error_response(
+            ErrorType.VALIDATION,
+            f"Invalid search type. Must be one of: {list(Config.SEARCH_TYPES.keys())}"
+        )
+
+    # Set default configurations
+    default_filters = {
+        "year_range": None,
+        "min_citations": None,
+        "max_papers_per_author": None,
+        "require_abstract": False,
+        "require_references": False,
+        "citation_range": None,
+        "author_citation_count": None,
+        "venue_impact_factor": None,
+        "exclude_venues": [],
+        "include_venues": []
+    }
+    
+    default_config = {
+        "batch_size": Config.MAX_BATCH_SIZE,
+        "max_batches": Config.MAX_BATCHES,
+        "diversify_results": True,
+        "prioritize_open_access": False,
+        "min_abstract_length": None,
+        "ranking_strategy": Config.SEARCH_TYPES[search_type]["ranking_strategy"]
+    }
+
+    # Merge provided filters/config with defaults
+    filters = {**default_filters, **(filters or {})}
+    search_config = {**default_config, **(search_config or {})}
+
+    # Apply search type configurations
+    search_type_config = Config.SEARCH_TYPES[search_type]
+    if search_type_config["min_citations"]:
+        filters["min_citations"] = max(
+            filters.get("min_citations", 0),
+            search_type_config["min_citations"]
+        )
+    
+    if search_type == "latest":
+        current_year = datetime.now().year
+        if not filters.get("year_range"):
+            filters["year_range"] = (current_year - 2, current_year)
+
+    try:
+        # Perform initial search using paper_search
+        initial_results = await paper_search(
+            context,
+            query=query,
+            fields=PaperFields.DETAILED,
+            min_citation_count=filters.get("min_citations"),
+            year=f"{filters['year_range'][0]}-{filters['year_range'][1]}" if filters["year_range"] else None,
+            limit=search_config["batch_size"]
+        )
+
+        if "error" in initial_results:
+            return initial_results
+
+        # Process and enhance results
+        processed_results = await process_search_results(
+            context, initial_results, filters, search_config
+        )
+
+        return processed_results
+
+    except Exception as e:
+        logger.error(f"Error in advanced search: {str(e)}")
+        return create_error_response(
+            ErrorType.API_ERROR,
+            str(e)
+        )
+
 
 if __name__ == "__main__":
     logger.info("Starting Semantic Scholar Server")

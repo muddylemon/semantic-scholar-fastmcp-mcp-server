@@ -14,6 +14,9 @@ from dataclasses import dataclass
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Global HTTP client for connection pooling
+http_client = None
+
 # Rate Limiting Configuration
 @dataclass
 class RateLimitConfig:
@@ -250,6 +253,29 @@ def get_api_key() -> Optional[str]:
         logger.warning("No SEMANTIC_SCHOLAR_API_KEY set. Using unauthenticated access with lower rate limits.")
     return api_key
 
+async def handle_exception(loop, context):
+    """Global exception handler for the event loop."""
+    msg = context.get("exception", context["message"])
+    logger.error(f"Caught exception: {msg}")
+    asyncio.create_task(shutdown())
+
+async def initialize_client():
+    """Initialize the global HTTP client."""
+    global http_client
+    if http_client is None:
+        http_client = httpx.AsyncClient(
+            timeout=Config.TIMEOUT,
+            limits=httpx.Limits(max_keepalive_connections=10)
+        )
+    return http_client
+
+async def cleanup_client():
+    """Cleanup the global HTTP client."""
+    global http_client
+    if http_client is not None:
+        await http_client.aclose()
+        http_client = None
+
 async def make_request(endpoint: str, params: Dict = None) -> Dict:
     """Make a rate-limited request to the Semantic Scholar API."""
     try:
@@ -259,16 +285,13 @@ async def make_request(endpoint: str, params: Dict = None) -> Dict:
         # Get API key if available
         api_key = get_api_key()
         headers = {"x-api-key": api_key} if api_key else {}
-
         url = f"{Config.BASE_URL}{endpoint}"
-        
-        # Adjust timeout for unauthenticated requests
-        timeout = Config.TIMEOUT * 2 if not api_key else Config.TIMEOUT
 
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(url, params=params, headers=headers)
-            response.raise_for_status()
-            return response.json()
+        # Use global client
+        client = await initialize_client()
+        response = await client.get(url, params=params, headers=headers)
+        response.raise_for_status()
+        return response.json()
     except httpx.HTTPStatusError as e:
         logger.error(f"HTTP error {e.response.status_code} for {endpoint}: {e.response.text}")
         if e.response.status_code == 429:
@@ -297,9 +320,6 @@ async def make_request(endpoint: str, params: Dict = None) -> Dict:
             ErrorType.API_ERROR,
             str(e)
         )
-    finally:
-        # Clean up any resources if needed
-        pass
 
 @mcp.tool()
 async def paper_search(
@@ -1401,12 +1421,13 @@ async def get_paper_recommendations(
     context: Context,
     positive_paper_ids: List[str],
     negative_paper_ids: Optional[List[str]] = None,
-    from_pool: Optional[str] = "recent",
     fields: Optional[str] = None,
-    limit: int = 100
+    limit: int = 100,
+    from_pool: str = "recent"
 ) -> Dict:
     """
     Get paper recommendations based on positive and optional negative example papers.
+    Supports both single-paper and multi-paper recommendation endpoints.
     
     Args:
         positive_paper_ids (List[str]): List of paper IDs to use as positive examples.
@@ -1415,18 +1436,20 @@ async def get_paper_recommendations(
             - Semantic Scholar ID
             - DOI: prefixed with "DOI:"
             - arXiv: prefixed with "ARXIV:"
-            - etc.
+            - MAG: prefixed with "MAG:"
+            - ACL: prefixed with "ACL:"
+            - PMID: prefixed with "PMID:"
+            - PMCID: prefixed with "PMCID:"
+            - URL: prefixed with "URL:" (from supported domains)
         negative_paper_ids (Optional[List[str]]): List of paper IDs to use as negative examples.
             Only used when using the multi-paper recommendation endpoint.
-        from_pool (Optional[str]): Which pool of papers to recommend from.
-            Only used for single-paper recommendations.
-            Options:
-            - "recent" (default): Recent papers
-            - "all-cs": All computer science papers
         fields (Optional[str]): Comma-separated list of fields to return for recommended papers.
             Examples: "title,url,authors", "abstract,year,venue"
             If omitted, returns only paperId and title.
         limit (int): Number of recommendations to return (default: 100, max: 500)
+        from_pool (str): Which pool of papers to recommend from (default: "recent").
+            Only used for single-paper recommendations.
+            Options: "recent" (default), "all-cs"
     
     Returns:
         Dict: Contains list of recommended papers with requested fields
@@ -1479,38 +1502,61 @@ async def get_paper_recommendations(
                 {"valid_fields": list(PaperFields.VALID_FIELDS)}
             )
 
-    # Build base parameters
-    params = {"limit": limit}
-    if fields:
-        params["fields"] = fields
-
     try:
         # Apply rate limiting through our standard mechanism
         endpoint = "/recommendations"
         await rate_limiter.acquire(endpoint)
 
-        async with httpx.AsyncClient(timeout=Config.TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=Config.TIMEOUT, follow_redirects=True) as client:
             api_key = get_api_key()
             headers = {"x-api-key": api_key} if api_key else {}
-
+            
             # Choose endpoint based on number of input papers
             if len(positive_paper_ids) == 1 and not negative_paper_ids:
                 # Single paper recommendation
-                params["from"] = from_pool
-                url = f"{Config.BASE_URL}/recommendations/v1/paper/{positive_paper_ids[0]}/recommendations"
+                paper_id = positive_paper_ids[0]
+                params = {
+                    "limit": limit,
+                    "from": from_pool
+                }
+                if fields:
+                    params["fields"] = fields
+                    
+                url = f"https://api.semanticscholar.org/recommendations/v1/papers/{paper_id}/recommendations"
                 response = await client.get(url, params=params, headers=headers)
             else:
                 # Multi-paper recommendation
-                url = f"{Config.BASE_URL}/recommendations/v1/papers"
+                params = {"limit": limit}
+                if fields:
+                    params["fields"] = fields
+                    
                 request_body = {
                     "positivePaperIds": positive_paper_ids,
                     "negativePaperIds": negative_paper_ids or []
                 }
-                response = await client.post(
-                    url, 
-                    params=params,
-                    json=request_body,
-                    headers=headers
+                
+                url = "https://api.semanticscholar.org/recommendations/v1/papers"
+                response = await client.post(url, params=params, json=request_body, headers=headers)
+            
+            # Handle specific error cases
+            if response.status_code == 404:
+                return create_error_response(
+                    ErrorType.VALIDATION,
+                    "One or more input papers not found",
+                    {
+                        "status_code": 404,
+                        "paper_ids": positive_paper_ids,
+                        "details": "Please verify all paper IDs are valid"
+                    }
+                )
+            elif response.status_code == 405:
+                return create_error_response(
+                    ErrorType.API_ERROR,
+                    "Method not allowed - API endpoint may have changed",
+                    {
+                        "status_code": 405,
+                        "endpoint": url
+                    }
                 )
             
             response.raise_for_status()
@@ -1520,29 +1566,29 @@ async def get_paper_recommendations(
         if e.response.status_code == 429:
             return create_error_response(
                 ErrorType.RATE_LIMIT,
-                "Rate limit exceeded",
-                {"retry_after": e.response.headers.get("retry-after")}
-            )
-        if e.response.status_code == 404:
-            return create_error_response(
-                ErrorType.VALIDATION,
-                "One or more input papers not found",
-                {"status_code": 404, "response": e.response.text}
+                "Rate limit exceeded. Consider using an API key for higher limits.",
+                {
+                    "retry_after": e.response.headers.get("retry-after"),
+                    "authenticated": bool(get_api_key())
+                }
             )
         return create_error_response(
             ErrorType.API_ERROR,
-            f"HTTP error: {e.response.status_code}",
+            f"HTTP error {e.response.status_code}",
             {"response": e.response.text}
         )
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as e:
         return create_error_response(
             ErrorType.TIMEOUT,
-            f"Request timed out after {Config.TIMEOUT} seconds"
+            f"Request timed out after {Config.TIMEOUT} seconds",
+            {"timeout": Config.TIMEOUT}
         )
     except Exception as e:
+        logger.error(f"Unexpected error in recommendations: {str(e)}")
         return create_error_response(
             ErrorType.API_ERROR,
-            str(e)
+            "Failed to get recommendations",
+            {"error": str(e)}
         )
 
 @mcp.tool()
@@ -1689,14 +1735,21 @@ async def advanced_search_papers_semantic_scholar(
 async def shutdown():
     """Gracefully shut down the server."""
     logger.info("Initiating graceful shutdown...")
-    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
     
-    # Give tasks a chance to complete
+    # Cancel all tasks
+    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
     for task in tasks:
         task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     
-    logger.info(f"Cancelling {len(tasks)} outstanding tasks")
-    await asyncio.gather(*tasks, return_exceptions=True)
+    # Cleanup resources
+    await cleanup_client()
+    await mcp.cleanup()
+    
+    logger.info(f"Cancelled {len(tasks)} tasks")
     logger.info("Shutdown complete")
 
 def init_signal_handlers(loop):
@@ -1705,26 +1758,42 @@ def init_signal_handlers(loop):
         loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
     logger.info("Signal handlers initialized")
 
+async def run_server():
+    """Run the server with proper async context management."""
+    async with mcp:
+        try:
+            # Initialize HTTP client
+            await initialize_client()
+            
+            # Start the server
+            logger.info("Starting Semantic Scholar Server")
+            await mcp.run_async()
+        except Exception as e:
+            logger.error(f"Server error: {e}")
+            raise
+        finally:
+            await shutdown()
+
 if __name__ == "__main__":
     try:
+        # Set up event loop with exception handler
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        loop.set_exception_handler(handle_exception)
         
         # Initialize signal handlers
         init_signal_handlers(loop)
         
-        # Start the server
-        logger.info("Starting Semantic Scholar Server")
-        loop.run_until_complete(mcp.run_async())
+        # Run the server
+        loop.run_until_complete(run_server())
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt, shutting down...")
     except Exception as e:
         logger.error(f"Fatal error: {str(e)}")
     finally:
         try:
-            loop.run_until_complete(shutdown())
-        except Exception as e:
-            logger.error(f"Error during shutdown: {str(e)}")
-        finally:
+            loop.run_until_complete(asyncio.sleep(0))  # Let pending tasks complete
             loop.close()
-            logger.info("Server stopped")
+        except Exception as e:
+            logger.error(f"Error during final cleanup: {str(e)}")
+        logger.info("Server stopped")

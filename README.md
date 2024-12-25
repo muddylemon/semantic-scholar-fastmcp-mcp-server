@@ -1,139 +1,196 @@
 # Semantic Scholar MCP Server
 
-An MCP server that provides access to the Semantic Scholar API through Model Context Protocol (MCP). This server is built with the FastMCP framework, enabling LLMs to search and retrieve academic paper information, author details, and perform advanced scholarly literature analysis.
+A FastMCP server implementation for the Semantic Scholar API, providing comprehensive access to academic paper data, author information, and citation networks.
 
-## 📋 System Requirements
+## Features
+
+- **Paper Search & Discovery**
+
+  - Full-text search with advanced filtering
+  - Title-based paper matching
+  - Paper recommendations with positive/negative examples
+  - Batch paper details retrieval
+
+- **Citation Analysis**
+
+  - Citation network exploration
+  - Reference tracking
+  - Citation context and influence analysis
+
+- **Author Information**
+
+  - Author search and profile details
+  - Publication history
+  - Batch author details retrieval
+
+- **Advanced Features**
+  - Complex search with multiple ranking strategies
+  - Customizable field selection
+  - Efficient batch operations
+  - Rate limiting compliance
+  - Support for both authenticated and unauthenticated access
+
+## System Requirements
 
 - Python 3.8+
-- pip (Python package manager)
-- Semantic Scholar API key
+- FastMCP framework
+- `httpx` for async HTTP requests
+- Environment variable for API key (optional)
 
-## 📦 Dependencies
+## Installation
 
-Install all required dependencies:
+### Option 1: Claude Desktop
 
-```bash
-pip install -r requirements.txt
+1. Clone this repository to your Claude Desktop workspace
+2. Optionally set up the API key environment variable:
+   ```bash
+   export SEMANTIC_SCHOLAR_API_KEY="your-api-key"
+   ```
+3. The server will be automatically available to Claude
+
+### Option 2: Cline VSCode Plugin
+
+1. Copy the server implementation to your workspace
+2. Optionally configure the API key in your environment
+3. The server will be accessible through the Cline plugin
+
+## Configuration
+
+### Environment Variables
+
+- `SEMANTIC_SCHOLAR_API_KEY`: Your Semantic Scholar API key (optional)
+  - Get your key from [Semantic Scholar API](https://www.semanticscholar.org/product/api)
+  - If not provided, the server will use unauthenticated access
+
+### API Access Modes
+
+#### Authenticated Access (With API Key)
+
+- Higher rate limits
+- Faster response times
+- Access to all API features
+- Recommended for production use
+
+#### Unauthenticated Access (No API Key)
+
+- Lower rate limits
+- Longer timeouts
+- Basic API functionality
+- Suitable for testing and development
+
+### Rate Limits
+
+The server automatically adjusts to the appropriate rate limits:
+
+**With API Key**:
+
+- Search and batch endpoints: 1 request per second
+- Other endpoints: 10 requests per second
+
+**Without API Key**:
+
+- All endpoints: 100 requests per 5 minutes
+- Longer timeouts for requests
+
+## Available MCP Tools
+
+### Paper Search Tools
+
+- `paper_search`: General paper search with filters
+- `paper_search_match`: Exact title matching
+- `paper_details`: Single paper details
+- `paper_batch_details`: Multiple paper details
+
+### Citation Tools
+
+- `paper_citations`: Get citing papers
+- `paper_references`: Get referenced papers
+
+### Author Tools
+
+- `author_search`: Search for authors
+- `author_details`: Get author information
+- `author_papers`: Get author's publications
+- `author_batch_details`: Multiple author details
+
+### Advanced Tools
+
+- `advanced_search_papers_semantic_scholar`: Complex search with ranking
+- `get_paper_recommendations`: Paper recommendations
+
+## Usage Examples
+
+### Basic Paper Search
+
+```python
+results = await paper_search(
+    context,
+    query="machine learning",
+    year="2020-2024",
+    min_citation_count=50,
+    fields=["title", "abstract", "authors"]
+)
 ```
 
-### Required Packages
+### Get Paper Recommendations
 
-- **fastmcp**: Framework for building Model Context Protocol servers
-- **httpx**: Async HTTP client for API requests
-- **python-dotenv**: Environment variable management
-
-All dependencies are specified in `requirements.txt` for easy installation.
-
-## 📑 Table of Contents
-
-- [System Requirements](#-system-requirements)
-- [Dependencies](#-dependencies)
-- [MCP Tools](#%EF%B8%8F-mcp-tools)
-- [Getting Started](#-getting-started)
-- [Installation Options](#-installation-options)
-  - [Claude Desktop](#option-1-install-for-claude-desktop)
-  - [Cline VSCode Plugin](#option-2-install-for-cline-vscode-plugin)
-- [Environment Variables](#%EF%B8%8F-environment-variables)
-
-## 🛠️ MCP Tools
-
-The server exposes the following tools to LLMs:
-
-### custom_search_papers_semantic_scholar
-
-Search for academic papers with customizable fields and limits:
-
-- Query-based paper search
-- Configurable result fields
-- Pagination support
-- Citation information
-
-### get_paper_details_semantic_scholar
-
-Retrieve detailed information about specific papers:
-
-- Full paper metadata
-- Citation counts
-- Author information
-- References and citations
-- Venue details
-
-### get_author_details_semantic_scholar
-
-Access comprehensive author information:
-
-- Publication metrics
-- H-index
-- Citation counts
-- Publication history
-
-### advanced_search_papers_semantic_scholar
-
-Advanced search functionality with comprehensive filtering options:
-
-- Year range filtering
-- Citation threshold filtering
-- Multiple sorting options (relevance, citations, year, influence)
-- Customizable result limits
-- Combined functionality for finding both recent and seminal papers
-
-## 🚀 Getting Started
-
-Clone the repository:
-
-```bash
-git clone [repository-url]
-cd semantic-scholar-server
+```python
+recommendations = await get_paper_recommendations(
+    context,
+    positive_paper_ids=["649def34f8be52c8b66281af98ae884c09aef38b"],
+    fields="title,authors,year",
+    limit=10
+)
 ```
 
-## 📦 Installation Options
+### Batch Author Details
 
-You can install this MCP server in either Claude Desktop or the Cline VSCode plugin.
-
-### Option 1: Install for Claude Desktop
-
-Install using FastMCP:
-
-```bash
-fastmcp install semantic-scholar-server.py --name "Semantic Scholar Server" -e SEMANTIC_SCHOLAR_API_KEY=your_api_key
+```python
+author_info = await author_batch_details(
+    context,
+    author_ids=["1741101", "1780531"],
+    fields="name,hIndex,citationCount,paperCount"
+)
 ```
 
-Replace `your_api_key` with your Semantic Scholar API key.
+## Documentation
 
-### Option 2: Install for Cline VSCode Plugin
+For detailed documentation of all tools and features, see [DOCUMENTATION.md](DOCUMENTATION.md).
 
-To use this server with the [Cline VSCode plugin](http://cline.bot):
+## Error Handling
 
-1. In VSCode, click the server icon (☰) in the Cline plugin sidebar
-2. Click the "Edit MCP Settings" button (✎)
-3. Add the following configuration to the settings file:
+The server provides standardized error responses:
 
-```json
+```python
 {
-  "semantic-scholar": {
-    "command": "uv",
-    "args": [
-      "run",
-      "--with",
-      "fastmcp",
-      "fastmcp",
-      "run",
-      "/path/to/repo/semantic-scholar-server.py"
-    ],
-    "env": {
-      "SEMANTIC_SCHOLAR_API_KEY": "your_api_key"
+    "error": {
+        "type": "error_type",  # rate_limit, api_error, validation, timeout
+        "message": "Error description",
+        "details": {
+            # Additional context
+            "authenticated": true/false  # Indicates if request was authenticated
+        }
     }
-  }
 }
 ```
 
-Replace:
+## Best Practices
 
-- `/path/to/repo` with the full path to where you cloned this repository
-- `your_api_key` with your Semantic Scholar API key
+1. Use batch endpoints when requesting multiple items
+2. Leverage predefined field combinations for common use cases
+3. Use an API key for production environments
+4. Implement appropriate rate limit handling
+5. Validate inputs before making requests
+6. Handle errors appropriately in your application
 
-## ⚙️ Environment Variables
+## Contributing
 
-The following environment variables must be set:
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
-- `SEMANTIC_SCHOLAR_API_KEY`: Your Semantic Scholar API key (required for accessing the API)
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

@@ -239,11 +239,14 @@ def create_error_response(
 mcp = FastMCP("Semantic Scholar Server")
 rate_limiter = RateLimiter()
 
-def get_api_key():
+def get_api_key() -> Optional[str]:
+    """
+    Get the Semantic Scholar API key from environment variables.
+    Returns None if no API key is set, enabling unauthenticated access.
+    """
     api_key = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
     if not api_key:
-        logger.error("SEMANTIC_SCHOLAR_API_KEY environment variable not set.")
-        raise ValueError("SEMANTIC_SCHOLAR_API_KEY environment variable not set.")
+        logger.warning("No SEMANTIC_SCHOLAR_API_KEY set. Using unauthenticated access with lower rate limits.")
     return api_key
 
 async def make_request(endpoint: str, params: Dict = None) -> Dict:
@@ -252,11 +255,16 @@ async def make_request(endpoint: str, params: Dict = None) -> Dict:
         # Apply rate limiting
         await rate_limiter.acquire(endpoint)
 
+        # Get API key if available
         api_key = get_api_key()
         headers = {"x-api-key": api_key} if api_key else {}
-        url = f"{Config.BASE_URL}{endpoint}"
 
-        async with httpx.AsyncClient(timeout=Config.TIMEOUT) as client:
+        url = f"{Config.BASE_URL}{endpoint}"
+        
+        # Adjust timeout for unauthenticated requests
+        timeout = Config.TIMEOUT * 2 if not api_key else Config.TIMEOUT
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(url, params=params, headers=headers)
             response.raise_for_status()
             return response.json()
@@ -264,8 +272,11 @@ async def make_request(endpoint: str, params: Dict = None) -> Dict:
         if e.response.status_code == 429:
             return create_error_response(
                 ErrorType.RATE_LIMIT,
-                "Rate limit exceeded",
-                {"retry_after": e.response.headers.get("retry-after")}
+                "Rate limit exceeded. Consider using an API key for higher limits.",
+                {
+                    "retry_after": e.response.headers.get("retry-after"),
+                    "authenticated": bool(get_api_key())
+                }
             )
         return create_error_response(
             ErrorType.API_ERROR,

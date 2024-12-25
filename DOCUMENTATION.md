@@ -4,221 +4,294 @@ This document provides detailed documentation for all tools available in the Sem
 
 ## Server Overview
 
-The Semantic Scholar MCP Server is built using FastMCP and provides a comprehensive interface to the Semantic Scholar API. It enables LLMs to perform academic literature searches, retrieve paper details, analyze citation networks, and identify field experts.
+The Semantic Scholar MCP Server is built using FastMCP and provides a comprehensive interface to the Semantic Scholar API. It enables LLMs to perform academic literature searches, retrieve paper details, manage citations and references, and interact with author information.
 
 ## Base Configuration
 
 - **Base URL**: `https://api.semanticscholar.org/graph/v1`
 - **Authentication**: Requires Semantic Scholar API key via `SEMANTIC_SCHOLAR_API_KEY` environment variable
-- **Request Headers**: Uses `x-api-key` header for API authentication
+- **Rate Limiting**:
+  - Search and Batch endpoints: 1 request per second
+  - Other endpoints: 10 requests per second
+- **Timeout**: 30 seconds for all requests
+
+## Field Constants
+
+### Paper Fields
+
+```python
+class PaperFields:
+    DEFAULT = ["title", "abstract", "year", "citationCount", "authors", "url"]
+    DETAILED = DEFAULT + ["references", "citations", "venue", "influentialCitationCount"]
+    MINIMAL = ["title", "year", "authors"]
+    SEARCH = ["paperId", "title", "year", "citationCount"]
+```
+
+### Author Fields
+
+```python
+class AuthorDetailFields:
+    BASIC = ["name", "url", "affiliations"]
+    PAPERS_BASIC = ["papers"]
+    PAPERS_DETAILED = ["papers.year", "papers.authors", "papers.abstract", "papers.venue", "papers.url"]
+    COMPLETE = BASIC + ["papers", "papers.year", "papers.authors", "papers.venue"]
+    METRICS = ["citationCount", "hIndex", "paperCount"]
+```
+
+### Citation/Reference Fields
+
+```python
+class CitationReferenceFields:
+    BASIC = ["title"]
+    CONTEXT = ["contexts", "intents", "isInfluential"]
+    DETAILED = ["title", "abstract", "authors", "year", "venue"]
+    COMPLETE = CONTEXT + DETAILED
+```
 
 ## Available Tools
 
-### 1. custom_search_papers_semantic_scholar
+### Paper Search and Details
 
-**Purpose**: Performs a customizable search for academic papers on Semantic Scholar.
+#### 1. paper_search
 
-**Function Signature**:
+**Purpose**: Search for papers using various filters and criteria.
 
 ```python
-async def custom_search_papers_semantic_scholar(
+async def paper_search(
     context: Context,
     query: str,
-    limit: int = 10,
-    fields: Optional[List[str]] = None
+    fields: Optional[List[str]] = None,
+    publication_types: Optional[List[str]] = None,
+    open_access_pdf: bool = False,
+    min_citation_count: Optional[int] = None,
+    year: Optional[str] = None,
+    venue: Optional[List[str]] = None,
+    fields_of_study: Optional[List[str]] = None,
+    offset: int = 0,
+    limit: int = 10
 ) -> Dict
 ```
 
-**Parameters**:
-
-- `query` (str): The search query string
-- `limit` (int, optional): Maximum number of results (default: 10, max: 100)
-- `fields` (List[str], optional): Fields to include in results
-
-**Default Fields**:
-
-- title
-- abstract
-- year
-- citationCount
-- authors
-- url
-
-**Returns**: Dictionary containing search results or error message
-
-**Example Usage**:
+**Example**:
 
 ```python
-results = await custom_search_papers_semantic_scholar(
+# Search for recent machine learning papers
+results = await paper_search(
     context,
     query="machine learning",
-    limit=5,
-    fields=["title", "abstract", "year"]
+    year="2020-2024",
+    min_citation_count=50,
+    fields=["title", "abstract", "authors"]
 )
 ```
 
-### 2. get_paper_details_semantic_scholar
+#### 2. paper_search_match
 
-**Purpose**: Retrieves comprehensive information about a specific paper.
-
-**Function Signature**:
+**Purpose**: Find a specific paper by title match.
 
 ```python
-async def get_paper_details_semantic_scholar(
+async def paper_search_match(
+    context: Context,
+    query: str,
+    fields: Optional[List[str]] = None,
+    publication_types: Optional[List[str]] = None,
+    open_access_pdf: bool = False,
+    min_citation_count: Optional[int] = None,
+    year: Optional[str] = None,
+    venue: Optional[List[str]] = None,
+    fields_of_study: Optional[List[str]] = None
+) -> Dict
+```
+
+#### 3. paper_details
+
+**Purpose**: Get detailed information about a specific paper.
+
+```python
+async def paper_details(
     context: Context,
     paper_id: str,
     fields: Optional[List[str]] = None
 ) -> Dict
 ```
 
-**Parameters**:
+#### 4. paper_batch_details
 
-- `paper_id` (str): Semantic Scholar paper ID
-- `fields` (List[str], optional): Fields to include in results
-
-**Default Fields**:
-
-- title
-- abstract
-- year
-- citationCount
-- authors
-- references
-- citations
-- url
-- venue
-
-**Returns**: Dictionary containing paper details or error message
-
-### 3. get_author_details_semantic_scholar
-
-**Purpose**: Retrieves detailed information about an academic author.
-
-**Function Signature**:
+**Purpose**: Get details for multiple papers in a single request.
 
 ```python
-async def get_author_details_semantic_scholar(
+async def paper_batch_details(
+    context: Context,
+    paper_ids: List[str],
+    fields: Optional[str] = None
+) -> Dict
+```
+
+### Citations and References
+
+#### 5. paper_citations
+
+**Purpose**: Get papers that cite a specific paper.
+
+```python
+async def paper_citations(
+    context: Context,
+    paper_id: str,
+    fields: Optional[List[str]] = None,
+    offset: int = 0,
+    limit: int = 100
+) -> Dict
+```
+
+#### 6. paper_references
+
+**Purpose**: Get papers cited by a specific paper.
+
+```python
+async def paper_references(
+    context: Context,
+    paper_id: str,
+    fields: Optional[List[str]] = None,
+    offset: int = 0,
+    limit: int = 100
+) -> Dict
+```
+
+### Author Tools
+
+#### 7. author_search
+
+**Purpose**: Search for authors by name.
+
+```python
+async def author_search(
+    context: Context,
+    query: str,
+    fields: Optional[List[str]] = None,
+    offset: int = 0,
+    limit: int = 100
+) -> Dict
+```
+
+#### 8. author_details
+
+**Purpose**: Get detailed information about an author.
+
+```python
+async def author_details(
     context: Context,
     author_id: str,
     fields: Optional[List[str]] = None
 ) -> Dict
 ```
 
-**Parameters**:
+#### 9. author_papers
 
-- `author_id` (str): Semantic Scholar author ID
-- `fields` (List[str], optional): Fields to include in results
+**Purpose**: Get papers written by an author.
 
-**Default Fields**:
+```python
+async def author_papers(
+    context: Context,
+    author_id: str,
+    fields: Optional[List[str]] = None,
+    offset: int = 0,
+    limit: int = 100
+) -> Dict
+```
 
-- name
-- paperCount
-- citationCount
-- hIndex
-- papers
+#### 10. author_batch_details
 
-**Returns**: Dictionary containing author details or error message
+**Purpose**: Get details for multiple authors in a single request.
 
-### 4. advanced_search_papers_semantic_scholar
+```python
+async def author_batch_details(
+    context: Context,
+    author_ids: List[str],
+    fields: Optional[str] = None
+) -> Dict
+```
 
-**Purpose**: Provides advanced search functionality with comprehensive filtering options for finding both recent and influential papers.
+### Advanced Search and Recommendations
 
-**Function Signature**:
+#### 11. advanced_search_papers_semantic_scholar
+
+**Purpose**: Advanced paper search with complex filtering and ranking.
 
 ```python
 async def advanced_search_papers_semantic_scholar(
     context: Context,
     query: str,
-    filters: Dict = {
-        "year_range": None,  # (start, end)
-        "min_citations": None,
-        "sort_by": "relevance",  # or "citations", "year", "influence"
-        "limit": 10
-    }
-) -> List[Dict]
+    search_type: str = "comprehensive",
+    filters: Optional[Dict] = None,
+    search_config: Optional[Dict] = None
+) -> Dict
 ```
 
-**Parameters**:
+**Search Types**:
 
-- `query` (str): Search query for finding relevant papers
-- `filters` (Dict): Dictionary containing search filters:
-  - `year_range` (Tuple[int, int], optional): Tuple of (start_year, end_year) to filter papers by publication date
-  - `min_citations` (int, optional): Minimum number of citations required
-  - `sort_by` (str): Sorting criterion (default: "relevance")
-    - "relevance": Sort by relevance to query
-    - "citations": Sort by citation count
-    - "year": Sort by publication year
-    - "influence": Sort by influence score
-  - `limit` (int): Maximum number of papers to return (default: 10)
+- `comprehensive`: Balanced search considering relevance and impact
+- `influential`: Focus on highly-cited papers
+- `latest`: Focus on recent papers
 
-**Returns**: List of dictionaries containing papers matching the search criteria
+#### 12. get_paper_recommendations
 
-**Example Usage**:
+**Purpose**: Get paper recommendations based on example papers.
 
 ```python
-# Find recent influential papers in machine learning
-results = await advanced_search_papers_semantic_scholar(
-    context,
-    query="machine learning",
-    filters={
-        "year_range": (2020, 2024),
-        "min_citations": 50,
-        "sort_by": "citations",
-        "limit": 5
-    }
-)
-
-# Find seminal papers in a field
-results = await advanced_search_papers_semantic_scholar(
-    context,
-    query="quantum computing",
-    filters={
-        "min_citations": 1000,
-        "sort_by": "influence",
-        "limit": 10
-    }
-)
+async def get_paper_recommendations(
+    context: Context,
+    positive_paper_ids: List[str],
+    negative_paper_ids: Optional[List[str]] = None,
+    from_pool: Optional[str] = "recent",
+    fields: Optional[str] = None,
+    limit: int = 100
+) -> Dict
 ```
 
 ## Error Handling
 
-All tools include comprehensive error handling:
+The server implements standardized error handling through the `ErrorType` enum:
 
-1. **API Errors**:
+```python
+class ErrorType(Enum):
+    RATE_LIMIT = "rate_limit"
+    API_ERROR = "api_error"
+    VALIDATION = "validation"
+    TIMEOUT = "timeout"
+```
 
-   - HTTP status errors
-   - Rate limiting
-   - Authentication failures
+Each error response includes:
 
-2. **Input Validation**:
-
-   - Parameter type checking
-   - Value range validation
-   - Required field verification
-
-3. **Response Processing**:
-   - JSON parsing errors
-   - Missing field handling
-   - Empty result handling
+- Error type
+- Descriptive message
+- Additional details when relevant
 
 ## Best Practices
 
 1. **Rate Limiting**:
 
-   - Respect API rate limits
-   - Implement exponential backoff for retries
+   - Respect the different rate limits for search/batch (1/s) and other endpoints (10/s)
+   - Use batch endpoints when possible to optimize request usage
 
 2. **Field Selection**:
 
-   - Only request needed fields
-   - Use default fields when unsure
+   - Use predefined field combinations when appropriate (e.g., `PaperFields.DEFAULT`)
+   - Only request needed fields to optimize response size
+   - Validate fields against `VALID_FIELDS` sets
 
-3. **Result Limits**:
+3. **Pagination**:
 
-   - Use appropriate search limits
-   - Consider pagination for large results
+   - Use offset/limit parameters for large result sets
+   - Default limit is 100, maximum is 1000 for most endpoints
+   - Batch endpoints have specific limits (500 for papers, 1000 for authors)
 
-4. **Error Handling**:
+4. **Search Optimization**:
+
+   - Use `paper_search_match` for exact title matches
+   - Use `advanced_search_papers_semantic_scholar` for complex queries
+   - Use batch endpoints for multiple paper/author lookups
+
+5. **Error Handling**:
    - Always check for error responses
-   - Log errors appropriately
-   - Provide meaningful error messages
+   - Handle rate limiting with appropriate backoff
+   - Validate inputs before making requests

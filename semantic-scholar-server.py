@@ -1517,12 +1517,12 @@ async def get_paper_recommendations(
                 paper_id = positive_paper_ids[0]
                 params = {
                     "limit": limit,
-                    "from": from_pool
+                    "from": from_pool  # This is correct as per docs - it's a query param
                 }
                 if fields:
                     params["fields"] = fields
                     
-                url = f"https://api.semanticscholar.org/recommendations/v1/papers/{paper_id}"
+                url = f"https://api.semanticscholar.org/recommendations/v1/papers/forpaper/{paper_id}"
                 response = await client.get(url, params=params, headers=headers)
             else:
                 # Multi-paper recommendation

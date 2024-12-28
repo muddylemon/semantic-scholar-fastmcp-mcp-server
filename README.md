@@ -213,11 +213,3 @@ The server provides standardized error responses:
     }
 }
 ```
-
-## Documentation
-
-For detailed documentation of all tools and features, see [DOCUMENTATION.md](DOCUMENTATION.md).
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

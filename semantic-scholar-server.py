@@ -243,6 +243,9 @@ def create_error_response(
 mcp = FastMCP("Semantic Scholar Server")
 rate_limiter = RateLimiter()
 
+
+# Basic functions
+
 def get_api_key() -> Optional[str]:
     """
     Get the Semantic Scholar API key from environment variables.
@@ -321,8 +324,14 @@ async def make_request(endpoint: str, params: Dict = None) -> Dict:
             str(e)
         )
 
+
+
+
+# 1. Paper Data Tools
+
+# 1.1 Paper relevance search
 @mcp.tool()
-async def paper_search(
+async def paper_relevance_search(
     context: Context,
     query: str,
     fields: Optional[List[str]] = None,
@@ -401,170 +410,11 @@ async def paper_search(
 
     return await make_request("/paper/search", params)
 
-async def process_search_results(
-    context: Context,
-    initial_results: Dict,
-    filters: Dict,
-    config: Dict
-) -> Dict:
-    """Helper function to process and enhance search results."""
-    try:
-        papers = initial_results.get("data", [])
-        total_found = initial_results.get("total", 0)
-        processed_papers = []
-        
-        # Track statistics
-        stats = {
-            "total_found": total_found,
-            "total_processed": len(papers),
-            "avg_citations": 0,
-            "year_distribution": {},
-            "top_venues": [],
-            "top_authors": []
-        }
-        
-        # Process each paper
-        author_paper_count = {}
-        venue_papers = {}
-        total_citations = 0
-        
-        for paper in papers:
-            # Apply complex filters
-            if not await should_include_paper(paper, filters, config):
-                continue
-                
-            # Track statistics
-            year = paper.get("year")
-            if year:
-                stats["year_distribution"][year] = stats["year_distribution"].get(year, 0) + 1
-            
-            citations = paper.get("citationCount", 0)
-            total_citations += citations
-            
-            venue = paper.get("venue")
-            if venue:
-                venue_papers[venue] = venue_papers.get(venue, 0) + 1
-            
-            for author in paper.get("authors", []):
-                author_name = author.get("name")
-                if author_name:
-                    author_paper_count[author_name] = author_paper_count.get(author_name, 0) + 1
-            
-            processed_papers.append(paper)
-        
-        # Calculate statistics
-        if processed_papers:
-            stats["avg_citations"] = total_citations / len(processed_papers)
-        
-        # Get top venues and authors
-        stats["top_venues"] = sorted(venue_papers.items(), key=lambda x: x[1], reverse=True)[:5]
-        stats["top_authors"] = sorted(author_paper_count.items(), key=lambda x: x[1], reverse=True)[:5]
-        
-        # Apply ranking strategy
-        processed_papers = await rank_papers(processed_papers, config["ranking_strategy"])
-        
-        # Apply diversification if enabled
-        if config["diversify_results"]:
-            processed_papers = await diversify_results(processed_papers)
-        
-        return {
-            "papers": processed_papers,
-            "stats": stats,
-            "meta": {
-                "search_coverage": len(processed_papers) / total_found if total_found > 0 else 0,
-                "filters_applied": list(filters.keys()),
-                "ranking_factors": await get_ranking_factors(config["ranking_strategy"])
-            }
-        }
+# 1.2 Paper bulk search
     
-    except Exception as e:
-        logger.error(f"Error processing search results: {str(e)}")
-        return create_error_response(
-            ErrorType.API_ERROR,
-            f"Error processing search results: {str(e)}"
-        )
-
-async def should_include_paper(paper: Dict, filters: Dict, config: Dict) -> bool:
-    """Determine if a paper should be included based on complex filters."""
-    try:
-        # Check citation range
-        if filters["citation_range"]:
-            min_cites, max_cites = filters["citation_range"]
-            citations = paper.get("citationCount", 0)
-            if not (min_cites <= citations <= max_cites):
-                return False
-        
-        # Check abstract requirement and length
-        if filters["require_abstract"] or config["min_abstract_length"]:
-            abstract = paper.get("abstract", "")
-            if not abstract:
-                return False
-            if config["min_abstract_length"] and len(abstract) < config["min_abstract_length"]:
-                return False
-        
-        # Check references requirement
-        if filters["require_references"] and not paper.get("references"):
-            return False
-        
-        # Check venue filters
-        venue = paper.get("venue", "")
-        if filters["exclude_venues"] and venue in filters["exclude_venues"]:
-            return False
-        if filters["include_venues"] and venue not in filters["include_venues"]:
-            return False
-        
-        # Check author criteria
-        if filters["author_citation_count"]:
-            for author in paper.get("authors", []):
-                if author.get("citationCount", 0) >= filters["author_citation_count"]:
-                    return True
-            return False
-        
-        return True
-    
-    except Exception as e:
-        logger.error(f"Error in paper filtering: {str(e)}")
-        return False
-
-async def rank_papers(papers: List[Dict], strategy: str) -> List[Dict]:
-    """Rank papers based on the specified strategy."""
-    try:
-        if strategy == "citations":
-            return sorted(papers, key=lambda x: x.get("citationCount", 0), reverse=True)
-        elif strategy == "recency":
-            return sorted(papers, key=lambda x: (x.get("year", 0), x.get("citationCount", 0)), reverse=True)
-        elif strategy == "balanced":
-            return sorted(papers, key=lambda x: (
-                x.get("citationCount", 0) * 0.6 +
-                x.get("year", 0) * 0.4
-            ), reverse=True)
-        return papers
-    except Exception as e:
-        logger.error(f"Error ranking papers: {str(e)}")
-        return papers
-
-async def diversify_results(papers: List[Dict]) -> List[Dict]:
-    """Apply diversity to results to avoid similar papers."""
-    # Implementation for result diversification
-    # This could involve:
-    # 1. Clustering papers by topic
-    # 2. Ensuring representation from different venues
-    # 3. Spreading papers across years
-    # 4. Limiting papers per author
-    return papers
-
-async def get_ranking_factors(strategy: str) -> Dict:
-    """Get the factors used in ranking for transparency."""
-    if strategy == "citations":
-        return {"citations": 1.0}
-    elif strategy == "recency":
-        return {"year": 0.7, "citations": 0.3}
-    elif strategy == "balanced":
-        return {"citations": 0.6, "year": 0.4}
-    return {}
-
+# 1.3 Paper title search
 @mcp.tool()
-async def paper_search_match(
+async def paper_title_search(
     context: Context,
     query: str,
     fields: Optional[List[str]] = None,
@@ -645,6 +495,7 @@ async def paper_search_match(
     
     return result
 
+# 1.3 Details about a paper
 @mcp.tool()
 async def paper_details(
     context: Context,
@@ -721,6 +572,114 @@ async def paper_details(
 
     return result
 
+# 1.4 Get details for multiple papers at once
+@mcp.tool()
+async def paper_batch_details(
+    context: Context,
+    paper_ids: List[str],
+    fields: Optional[str] = None
+) -> Dict:
+    """
+    Get details for multiple papers in a single batch request.
+    
+    Args:
+        paper_ids (List[str]): List of paper identifiers in any supported format:
+            - Semantic Scholar IDs
+            - DOI: prefixed with "DOI:"
+            - arXiv: prefixed with "ARXIV:"
+            - MAG: prefixed with "MAG:"
+            - ACL: prefixed with "ACL:"
+            - PubMed: prefixed with "PMID:"
+            - PubMed Central: prefixed with "PMCID:"
+            - URL: prefixed with "URL:" (from supported domains)
+        fields (Optional[str]): Comma-separated list of fields to return.
+            Special syntax for nested fields:
+            - Author fields: "authors.url", "authors.paperCount"
+            - Citation/reference fields: "citations.title", "references.year"
+            - Embedding: "embedding.specter_v2" for v2 embeddings
+            If omitted, returns only paperId and title.
+    
+    Returns:
+        List[Dict]: List of papers with requested fields. Papers maintain order
+                   of input IDs. Invalid IDs return null in results.
+                   
+    Example:
+        >>> # Get basic info for multiple papers
+        >>> paper_batch_details(
+        ...     paper_ids=["649def34f8be52c8b66281af98ae884c09aef38b", 
+        ...               "ARXIV:2106.15928"],
+        ...     fields="title,citationCount,authors"
+        ... )
+    """
+    # Validate inputs
+    if not paper_ids:
+        return create_error_response(
+            ErrorType.VALIDATION,
+            "Paper IDs list cannot be empty"
+        )
+        
+    if len(paper_ids) > 500:
+        return create_error_response(
+            ErrorType.VALIDATION,
+            "Cannot process more than 500 paper IDs at once",
+            {"max_papers": 500, "received": len(paper_ids)}
+        )
+
+    # Validate fields if provided
+    if fields:
+        field_list = fields.split(",")
+        invalid_fields = set(field_list) - PaperFields.VALID_FIELDS
+        if invalid_fields:
+            return create_error_response(
+                ErrorType.VALIDATION,
+                f"Invalid fields: {', '.join(invalid_fields)}",
+                {"valid_fields": list(PaperFields.VALID_FIELDS)}
+            )
+
+    # Build request parameters
+    params = {}
+    if fields:
+        params["fields"] = fields
+
+    # Make POST request with proper structure
+    try:
+        async with httpx.AsyncClient(timeout=Config.TIMEOUT) as client:
+            api_key = get_api_key()
+            headers = {"x-api-key": api_key} if api_key else {}
+            
+            response = await client.post(
+                f"{Config.BASE_URL}/paper/batch",
+                params=params,
+                json={"ids": paper_ids},
+                headers=headers
+            )
+            response.raise_for_status()
+            return response.json()
+            
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 429:
+            return create_error_response(
+                ErrorType.RATE_LIMIT,
+                "Rate limit exceeded",
+                {"retry_after": e.response.headers.get("retry-after")}
+            )
+        return create_error_response(
+            ErrorType.API_ERROR,
+            f"HTTP error: {e.response.status_code}",
+            {"response": e.response.text}
+        )
+    except httpx.TimeoutException:
+        return create_error_response(
+            ErrorType.TIMEOUT,
+            f"Request timed out after {Config.TIMEOUT} seconds"
+        )
+    except Exception as e:
+        return create_error_response(
+            ErrorType.API_ERROR,
+            str(e)
+        )
+
+# 1.4 Details about a paper's authors
 @mcp.tool()
 async def paper_authors(
     context: Context,
@@ -828,6 +787,7 @@ async def paper_authors(
 
     return result
 
+# 1.5 Details about a paper's citations
 @mcp.tool()
 async def paper_citations(
     context: Context,
@@ -923,6 +883,7 @@ async def paper_citations(
 
     return result
 
+# 1.6 Details about a paper's references
 @mcp.tool()
 async def paper_references(
     context: Context,
@@ -1018,6 +979,11 @@ async def paper_references(
 
     return result
 
+
+
+# 2. Author Data Tools
+
+# 2.1 Search for authors by name
 @mcp.tool()
 async def author_search(
     context: Context,
@@ -1082,6 +1048,7 @@ async def author_search(
     # Make the API request
     return await make_request("/author/search", params)
 
+# 2.2 Details about an author
 @mcp.tool()
 async def author_details(
     context: Context,
@@ -1138,6 +1105,7 @@ async def author_details(
 
     return result
 
+# 2.3 Details about an author's papers
 @mcp.tool()
 async def author_papers(
     context: Context,
@@ -1213,112 +1181,7 @@ async def author_papers(
 
     return result
 
-@mcp.tool()
-async def paper_batch_details(
-    context: Context,
-    paper_ids: List[str],
-    fields: Optional[str] = None
-) -> Dict:
-    """
-    Get details for multiple papers in a single batch request.
-    
-    Args:
-        paper_ids (List[str]): List of paper identifiers in any supported format:
-            - Semantic Scholar IDs
-            - DOI: prefixed with "DOI:"
-            - arXiv: prefixed with "ARXIV:"
-            - MAG: prefixed with "MAG:"
-            - ACL: prefixed with "ACL:"
-            - PubMed: prefixed with "PMID:"
-            - PubMed Central: prefixed with "PMCID:"
-            - URL: prefixed with "URL:" (from supported domains)
-        fields (Optional[str]): Comma-separated list of fields to return.
-            Special syntax for nested fields:
-            - Author fields: "authors.url", "authors.paperCount"
-            - Citation/reference fields: "citations.title", "references.year"
-            - Embedding: "embedding.specter_v2" for v2 embeddings
-            If omitted, returns only paperId and title.
-    
-    Returns:
-        List[Dict]: List of papers with requested fields. Papers maintain order
-                   of input IDs. Invalid IDs return null in results.
-                   
-    Example:
-        >>> # Get basic info for multiple papers
-        >>> paper_batch_details(
-        ...     paper_ids=["649def34f8be52c8b66281af98ae884c09aef38b", 
-        ...               "ARXIV:2106.15928"],
-        ...     fields="title,citationCount,authors"
-        ... )
-    """
-    # Validate inputs
-    if not paper_ids:
-        return create_error_response(
-            ErrorType.VALIDATION,
-            "Paper IDs list cannot be empty"
-        )
-        
-    if len(paper_ids) > 500:
-        return create_error_response(
-            ErrorType.VALIDATION,
-            "Cannot process more than 500 paper IDs at once",
-            {"max_papers": 500, "received": len(paper_ids)}
-        )
-
-    # Validate fields if provided
-    if fields:
-        field_list = fields.split(",")
-        invalid_fields = set(field_list) - PaperFields.VALID_FIELDS
-        if invalid_fields:
-            return create_error_response(
-                ErrorType.VALIDATION,
-                f"Invalid fields: {', '.join(invalid_fields)}",
-                {"valid_fields": list(PaperFields.VALID_FIELDS)}
-            )
-
-    # Build request parameters
-    params = {}
-    if fields:
-        params["fields"] = fields
-
-    # Make POST request with proper structure
-    try:
-        async with httpx.AsyncClient(timeout=Config.TIMEOUT) as client:
-            api_key = get_api_key()
-            headers = {"x-api-key": api_key} if api_key else {}
-            
-            response = await client.post(
-                f"{Config.BASE_URL}/paper/batch",
-                params=params,
-                json={"ids": paper_ids},
-                headers=headers
-            )
-            response.raise_for_status()
-            return response.json()
-            
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 429:
-            return create_error_response(
-                ErrorType.RATE_LIMIT,
-                "Rate limit exceeded",
-                {"retry_after": e.response.headers.get("retry-after")}
-            )
-        return create_error_response(
-            ErrorType.API_ERROR,
-            f"HTTP error: {e.response.status_code}",
-            {"response": e.response.text}
-        )
-    except httpx.TimeoutException:
-        return create_error_response(
-            ErrorType.TIMEOUT,
-            f"Request timed out after {Config.TIMEOUT} seconds"
-        )
-    except Exception as e:
-        return create_error_response(
-            ErrorType.API_ERROR,
-            str(e)
-        )
-
+# 2.4 Get details for multiple authors at once
 @mcp.tool()
 async def author_batch_details(
     context: Context,
@@ -1416,6 +1279,10 @@ async def author_batch_details(
             str(e)
         )
 
+
+# 3. Paper Recommendation Tools
+
+# 3.1 Get paper recommendations
 @mcp.tool()
 async def get_paper_recommendations(
     context: Context,
@@ -1591,6 +1458,175 @@ async def get_paper_recommendations(
             {"error": str(e)}
         )
 
+
+
+# 4. Customized search tools (to be implemented)
+
+# 4.0 helper functions:
+async def process_search_results(
+    context: Context,
+    initial_results: Dict,
+    filters: Dict,
+    config: Dict
+) -> Dict:
+    """Helper function to process and enhance search results."""
+    try:
+        papers = initial_results.get("data", [])
+        total_found = initial_results.get("total", 0)
+        processed_papers = []
+        
+        # Track statistics
+        stats = {
+            "total_found": total_found,
+            "total_processed": len(papers),
+            "avg_citations": 0,
+            "year_distribution": {},
+            "top_venues": [],
+            "top_authors": []
+        }
+        
+        # Process each paper
+        author_paper_count = {}
+        venue_papers = {}
+        total_citations = 0
+        
+        for paper in papers:
+            # Apply complex filters
+            if not await should_include_paper(paper, filters, config):
+                continue
+                
+            # Track statistics
+            year = paper.get("year")
+            if year:
+                stats["year_distribution"][year] = stats["year_distribution"].get(year, 0) + 1
+            
+            citations = paper.get("citationCount", 0)
+            total_citations += citations
+            
+            venue = paper.get("venue")
+            if venue:
+                venue_papers[venue] = venue_papers.get(venue, 0) + 1
+            
+            for author in paper.get("authors", []):
+                author_name = author.get("name")
+                if author_name:
+                    author_paper_count[author_name] = author_paper_count.get(author_name, 0) + 1
+            
+            processed_papers.append(paper)
+        
+        # Calculate statistics
+        if processed_papers:
+            stats["avg_citations"] = total_citations / len(processed_papers)
+        
+        # Get top venues and authors
+        stats["top_venues"] = sorted(venue_papers.items(), key=lambda x: x[1], reverse=True)[:5]
+        stats["top_authors"] = sorted(author_paper_count.items(), key=lambda x: x[1], reverse=True)[:5]
+        
+        # Apply ranking strategy
+        processed_papers = await rank_papers(processed_papers, config["ranking_strategy"])
+        
+        # Apply diversification if enabled
+        if config["diversify_results"]:
+            processed_papers = await diversify_results(processed_papers)
+        
+        return {
+            "papers": processed_papers,
+            "stats": stats,
+            "meta": {
+                "search_coverage": len(processed_papers) / total_found if total_found > 0 else 0,
+                "filters_applied": list(filters.keys()),
+                "ranking_factors": await get_ranking_factors(config["ranking_strategy"])
+            }
+        }
+    
+    except Exception as e:
+        logger.error(f"Error processing search results: {str(e)}")
+        return create_error_response(
+            ErrorType.API_ERROR,
+            f"Error processing search results: {str(e)}"
+        )
+
+async def should_include_paper(paper: Dict, filters: Dict, config: Dict) -> bool:
+    """Determine if a paper should be included based on complex filters."""
+    try:
+        # Check citation range
+        if filters["citation_range"]:
+            min_cites, max_cites = filters["citation_range"]
+            citations = paper.get("citationCount", 0)
+            if not (min_cites <= citations <= max_cites):
+                return False
+        
+        # Check abstract requirement and length
+        if filters["require_abstract"] or config["min_abstract_length"]:
+            abstract = paper.get("abstract", "")
+            if not abstract:
+                return False
+            if config["min_abstract_length"] and len(abstract) < config["min_abstract_length"]:
+                return False
+        
+        # Check references requirement
+        if filters["require_references"] and not paper.get("references"):
+            return False
+        
+        # Check venue filters
+        venue = paper.get("venue", "")
+        if filters["exclude_venues"] and venue in filters["exclude_venues"]:
+            return False
+        if filters["include_venues"] and venue not in filters["include_venues"]:
+            return False
+        
+        # Check author criteria
+        if filters["author_citation_count"]:
+            for author in paper.get("authors", []):
+                if author.get("citationCount", 0) >= filters["author_citation_count"]:
+                    return True
+            return False
+        
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error in paper filtering: {str(e)}")
+        return False
+
+async def rank_papers(papers: List[Dict], strategy: str) -> List[Dict]:
+    """Rank papers based on the specified strategy."""
+    try:
+        if strategy == "citations":
+            return sorted(papers, key=lambda x: x.get("citationCount", 0), reverse=True)
+        elif strategy == "recency":
+            return sorted(papers, key=lambda x: (x.get("year", 0), x.get("citationCount", 0)), reverse=True)
+        elif strategy == "balanced":
+            return sorted(papers, key=lambda x: (
+                x.get("citationCount", 0) * 0.6 +
+                x.get("year", 0) * 0.4
+            ), reverse=True)
+        return papers
+    except Exception as e:
+        logger.error(f"Error ranking papers: {str(e)}")
+        return papers
+
+async def diversify_results(papers: List[Dict]) -> List[Dict]:
+    """Apply diversity to results to avoid similar papers."""
+    # Implementation for result diversification
+    # This could involve:
+    # 1. Clustering papers by topic
+    # 2. Ensuring representation from different venues
+    # 3. Spreading papers across years
+    # 4. Limiting papers per author
+    return papers
+
+async def get_ranking_factors(strategy: str) -> Dict:
+    """Get the factors used in ranking for transparency."""
+    if strategy == "citations":
+        return {"citations": 1.0}
+    elif strategy == "recency":
+        return {"year": 0.7, "citations": 0.3}
+    elif strategy == "balanced":
+        return {"citations": 0.6, "year": 0.4}
+    return {}
+
+
+# 4.1 Advanced search papers tool
 @mcp.tool()
 async def advanced_search_papers_semantic_scholar(
     context: Context,
@@ -1731,6 +1767,10 @@ async def advanced_search_papers_semantic_scholar(
             ErrorType.API_ERROR,
             str(e)
         )
+
+
+
+
 
 async def shutdown():
     """Gracefully shut down the server."""

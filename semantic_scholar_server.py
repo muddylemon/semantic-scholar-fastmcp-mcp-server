@@ -26,10 +26,12 @@ class RateLimitConfig:
     DEFAULT_LIMIT = (10, 1)  # 10 requests per 1 second
     
     # Endpoints categorization
+    # These endpoints have stricter rate limits due to their computational intensity
+    # and to prevent abuse of the recommendation system
     RESTRICTED_ENDPOINTS = [
-        "/paper/batch",
-        "/paper/search",
-        "/recommendations"
+        "/paper/batch",     # Batch operations are expensive
+        "/paper/search",    # Search operations are computationally intensive
+        "/recommendations"  # Recommendation generation is resource-intensive
     ]
 
 # Error Types

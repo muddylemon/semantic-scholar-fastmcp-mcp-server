@@ -1,5 +1,7 @@
 # Semantic Scholar MCP Server
 
+[![smithery badge](https://smithery.ai/badge/semantic-scholar-fastmcp-mcp-server)](https://smithery.ai/server/semantic-scholar-fastmcp-mcp-server)
+
 A FastMCP server implementation for the Semantic Scholar API, providing comprehensive access to academic paper data, author information, and citation networks.
 
 ## Features
@@ -40,6 +42,14 @@ A FastMCP server implementation for the Semantic Scholar API, providing comprehe
 - Environment variable for API key (optional)
 
 ## Installation
+
+### Installing via Smithery
+
+To install Semantic Scholar MCP Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/semantic-scholar-fastmcp-mcp-server):
+
+```bash
+npx -y @smithery/cli install semantic-scholar-fastmcp-mcp-server --client claude
+```
 
 Install using FastMCP:
 

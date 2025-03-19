@@ -4,6 +4,37 @@
 
 A FastMCP server implementation for the Semantic Scholar API, providing comprehensive access to academic paper data, author information, and citation networks.
 
+## Project Structure
+
+The project has been refactored into a modular structure for better maintainability:
+
+```
+semantic-scholar-server/
+├── semantic_scholar/            # Main package
+│   ├── __init__.py             # Package initialization
+│   ├── server.py               # Server setup and main functionality
+│   ├── mcp.py                  # Centralized FastMCP instance definition
+│   ├── config.py               # Configuration classes
+│   ├── utils/                  # Utility modules
+│   │   ├── __init__.py
+│   │   ├── errors.py           # Error handling
+│   │   └── http.py             # HTTP client and rate limiting
+│   ├── api/                    # API endpoints
+│       ├── __init__.py
+│       ├── papers.py           # Paper-related endpoints
+│       ├── authors.py          # Author-related endpoints
+│       └── recommendations.py  # Recommendation endpoints
+├── run.py                      # Entry point script
+```
+
+This structure:
+
+- Separates concerns into logical modules
+- Makes the codebase easier to understand and maintain
+- Allows for better testing and future extensions
+- Keeps related functionality grouped together
+- Centralizes the FastMCP instance to avoid circular imports
+
 ## Features
 
 - **Paper Search & Discovery**
@@ -51,13 +82,56 @@ To install Semantic Scholar MCP Server for Claude Desktop automatically via [Smi
 npx -y @smithery/cli install semantic-scholar-fastmcp-mcp-server --client claude
 ```
 
-Install using FastMCP:
+### Manual Installation
+
+1. Clone the repository:
 
 ```bash
-fastmcp install semantic-scholar-server.py --name "Semantic Scholar" -e SEMANTIC_SCHOLAR_API_KEY=your-api-key
+git clone https://github.com/YUZongmin/semantic-scholar-fastmcp-mcp-server.git
+cd semantic-scholar-server
 ```
 
-The `-e SEMANTIC_SCHOLAR_API_KEY` parameter is optional. If not provided, the server will use unauthenticated access with lower rate limits.
+2. Install FastMCP and other dependencies following: https://github.com/jlowin/fastmcp
+
+3. Configure FastMCP:
+
+For Claude Desktop users, you'll need to configure the server in your FastMCP configuration file. Add the following to your configuration (typically in `~/.config/claude-desktop/config.json`):
+
+```json
+{
+  "mcps": {
+    "Semantic Scholar Server": {
+      "command": "/path/to/your/venv/bin/fastmcp",
+      "args": [
+        "run",
+        "/path/to/your/semantic-scholar-server/run.py"
+      ],
+      "env": {
+        "SEMANTIC_SCHOLAR_API_KEY": "your-api-key-here"  # Optional
+      }
+    }
+  }
+}
+```
+
+Make sure to:
+
+- Replace `/path/to/your/venv/bin/fastmcp` with the actual path to your FastMCP installation
+- Replace `/path/to/your/semantic-scholar-server/run.py` with the actual path to run.py on your machine
+- If you have a Semantic Scholar API key, add it to the `env` section. If not, you can remove the `env` section entirely
+
+4. Start using the server:
+
+The server will now be available to your Claude Desktop instance. No need to manually run any commands - Claude will automatically start and manage the server process when needed.
+
+### API Key (Optional)
+
+To get higher rate limits and better performance:
+
+1. Get an API key from [Semantic Scholar API](https://www.semanticscholar.org/product/api)
+2. Add it to your FastMCP configuration as shown above in the `env` section
+
+If no API key is provided, the server will use unauthenticated access with lower rate limits.
 
 ## Configuration
 

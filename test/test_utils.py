@@ -50,21 +50,18 @@ async def make_request(endpoint: str, params: Dict = None, method: str = "GET", 
     """Make a request to the Semantic Scholar API."""
     try:
         api_key = get_api_key()
-        headers = {}  # Move API key to params
+        headers = {"x-api-key": api_key} if api_key else {}
         params = params or {}
-        if api_key:
-            params["api_key"] = api_key
         
         # Choose base URL based on endpoint
-        is_recommendations = endpoint.startswith("recommendations") or not endpoint.startswith("/")
+        is_recommendations = endpoint.startswith("recommendations") or endpoint.startswith("papers/forpaper")
         base_url = Config.RECOMMENDATIONS_BASE_URL if is_recommendations else Config.GRAPH_BASE_URL
         
-        # Ensure endpoint starts with / for graph API
-        if not is_recommendations and not endpoint.startswith("/"):
-            endpoint = f"/{endpoint}"
-        # Remove leading / for recommendations API
-        elif is_recommendations and endpoint.startswith("/"):
+        # Clean up endpoint
+        if endpoint.startswith("/"):
             endpoint = endpoint[1:]
+        if is_recommendations and endpoint.startswith("recommendations/"):
+            endpoint = endpoint[15:]  # Remove "recommendations/" prefix
             
         url = f"{base_url}/{endpoint}"
         logger.info(f"Making {method} request to {url}")
@@ -73,7 +70,7 @@ async def make_request(endpoint: str, params: Dict = None, method: str = "GET", 
         if json:
             logger.info(f"JSON body: {json}")
 
-        async with httpx.AsyncClient(timeout=Config.TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=Config.TIMEOUT, follow_redirects=True) as client:
             if method == "GET":
                 response = await client.get(url, params=params, headers=headers)
             else:  # POST

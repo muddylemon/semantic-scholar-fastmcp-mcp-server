@@ -1,26 +1,24 @@
-# Start from a base Python image
-FROM python:3.8-slim
+FROM python:3.11-slim
 
 # Set the working directory
 WORKDIR /app
 
-# Copy the requirements file first to leverage Docker cache
+# Add the working directory to the PYTHONPATH.
+# This is the crucial fix that solves the ModuleNotFoundError.
+ENV PYTHONPATH /app
+
+# Copy and install requirements
 COPY requirements.txt /app/requirements.txt
+RUN apt-get update && apt-get install -y git
+RUN pip install git+https://github.com/jlowin/fastmcp.git
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code
-# This includes the 'semantic_scholar' package and 'run.py'
+# Copy the application code
 COPY . /app
-# Alternatively, be more specific:
-# COPY semantic_scholar /app/semantic_scholar
-# COPY run.py /app/run.py
 
 # Expose the port that the MCP server will run on
-EXPOSE 8000
+EXPOSE 8080
 
-# Set the environment variable for the API key (placeholder)
-# Glama or the user should provide the actual key at runtime
-ENV SEMANTIC_SCHOLAR_API_KEY=""
 
 # Command to run the server using the refactored entry point
 CMD ["python", "run.py"]
